@@ -1,0 +1,222 @@
+CREATE PROCEDURE dbo.delTenant @tenantID int
+AS
+BEGIN TRANSACTION
+	IF EXISTS (SELECT * FROM Next_of_kin WHERE TenantID = @tenantID)
+	BEGIN TRY
+		DELETE FROM Next_of_kin WHERE TenantID = @tenantID
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT DELETE IN NEXT OF KIN TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+
+	IF EXISTS (SELECT * FROM Signs WHERE TenantID = @tenantID)
+	BEGIN TRY
+		DELETE FROM Signs WHERE TenantID = @tenantID
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT DELETE IN SIGNS TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+
+	BEGIN TRY
+		DELETE FROM Tenant WHERE TenantID = @tenantID
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT DELETE IN TENANT TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+
+	IF EXISTS (SELECT * FROM PhoneNumber WHERE SSN = @tenantID)
+	BEGIN TRY
+		DELETE FROM PhoneNumber WHERE SSN = @tenantID
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT DELETE IN PHONE NUMBER TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+
+	IF NOT EXISTS (SELECT * FROM Employee WHERE Person_SSN = @tenantID)
+	BEGIN TRY
+		DELETE FROM Person WHERE SSN = @tenantID
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT DELETE IN PERSON TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+
+COMMIT TRANSACTION
+-------------tenant delete
+CREATE PROCEDURE dbo.delTechnician @technicianID int
+AS
+BEGIN TRANSACTION
+	IF EXISTS (SELECT * FROM Skill WHERE TechnicianID = @technicianID)
+	BEGIN TRY
+		DELETE FROM Skill WHERE TechnicianID = @technicianID
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT DELETE IN SKILL TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+	
+	IF EXISTS (SELECT * FROM Work WHERE TechnicianID = @technicianID)
+	BEGIN TRY
+		DELETE FROM Work WHERE TechnicianID = @technicianID
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT DELETE IN WORK TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+
+	BEGIN TRY
+		DELETE FROM Technician WHERE TechnicianID = @technicianID
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT DELETE IN TECHNICIAN TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+
+	IF EXISTS (SELECT * FROM PhoneNumber WHERE SSN = @technicianID)
+	BEGIN TRY
+		DELETE FROM PhoneNumber WHERE SSN = @technicianID
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT DELETE IN PHONE NUMBER TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+
+	IF NOT EXISTS (SELECT * FROM Manager WHERE Manager_ID = @technicianID)
+	BEGIN TRY
+		DELETE FROM Employee WHERE Person_SSN = @technicianID
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT DELETE IN EMPLOYEE TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+	
+	IF NOT EXISTS (SELECT * FROM Manager, Tenant WHERE Manager_ID = @technicianID OR TenantID = @technicianID)
+	BEGIN TRY
+		DELETE FROM Person WHERE SSN = @technicianID
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT DELETE IN PERSON TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+
+COMMIT TRANSACTION
+-----------technician delete
+CREATE PROCEDURE dbo.insTenant @tenantID int, @firstName varchar(45), @lastName varchar(45), @apartmentID int, @buildingID int, @bankAccount varchar(45), @managerID int, @monthlyRent NUMERIC(10,3), @duration int
+AS
+BEGIN TRANSACTION
+	DECLARE @AgreementID int, @endDate Date;
+	
+	IF NOT EXISTS (SELECT * FROM Person WHERE SSN = @tenantID)
+	BEGIN TRY
+		INSERT INTO Person
+		VALUES (@tenantID, @firstName, @lastName)
+
+		INSERT INTO Tenant
+		VALUES (@tenantID, @apartmentID, @buildingID, @bankAccount)
+
+		IF EXISTS (SELECT * FROM Agreement)
+		BEGIN
+			SELECT TOP 1 @AgreementID = ID_Agreement FROM Agreement ORDER BY ID_Agreement DESC
+		END
+		ELSE
+		BEGIN
+			SET @AgreementID = 0;
+		END
+		
+		SET @endDate = DATEADD(month, @duration, GETDATE())
+
+		INSERT INTO Agreement
+		VALUES (@AgreementID + 1, @apartmentID, @buildingID, @managerID, GETDATE(), @endDate, 200, @monthlyRent)
+
+		INSERT INTO Signs
+		VALUES (@tenantID, @AgreementID + 1)
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT INSERT TENANT, PERSON, AGREEMENT TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+	ELSE IF NOT EXISTS (SELECT * FROM Tenant WHERE TenantID = @tenantID)
+	BEGIN TRY
+		INSERT INTO Tenant
+		VALUES (@tenantID, @apartmentID, @buildingID, @bankAccount)
+
+		SELECT TOP 1 @AgreementID = ID_Agreement FROM Agreement ORDER BY ID_Agreement DESC
+
+		INSERT INTO Signs
+		VALUES (@tenantID, @AgreementID)
+
+		INSERT INTO Agreement
+		VALUES (@AgreementID + 1, @apartmentID, @buildingID, @managerID, GETDATE(), @endDate, 200, @monthlyRent)
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT INSERT PERSON, AGREEMENT TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+
+COMMIT TRANSACTION
+-----------------------------------------------
+CREATE PROCEDURE insTechnician @technicianID int, @firstName varchar(45), @lastName varchar(45), @buildingID int, @salary NUMERIC(10,3)
+AS
+BEGIN TRANSACTION
+	
+	IF NOT EXISTS (SELECT * FROM Person WHERE SSN = @technicianID)
+	BEGIN TRY
+		INSERT INTO Person
+		VALUES (@technicianID, @firstName, @lastName)
+
+		INSERT INTO Employee
+		VALUES (@technicianID, @salary)
+
+		INSERT INTO Technician
+		VALUES (@technicianID)
+		
+		INSERT INTO Work
+		VALUES (@technicianID, @buildingID)
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT INSERT PERSON, EMPLOYEE, TECHNICIAN, WORK TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+	ELSE IF NOT EXISTS (SELECT * FROM Employee WHERE Person_SSN = @technicianID)
+	BEGIN TRY
+		INSERT INTO Employee
+		VALUES (@technicianID, @salary)
+
+		INSERT INTO Technician
+		VALUES (@technicianID)
+		
+		INSERT INTO Work
+		VALUES (@technicianID, @buildingID)
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT INSERT EMPLOYEE, TECHNICIAN, WORK TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+
+COMMIT TRANSACTION
+--------------------------------------------------
+CREATE PROCEDURE dbo.insAgreement @tenantID int, @apartmentID int, @buildingID int, @managerID int, @monthlyRent NUMERIC(10,3), @endDate DATE
+AS
+BEGIN TRANSACTION
+	DECLARE @AgreementID int;
+	
+	IF NOT EXISTS (SELECT * FROM Person WHERE SSN = @tenantID)
+	BEGIN TRY
+		SELECT TOP 1 @AgreementID = ID_Agreement FROM Agreement ORDER BY ID_Agreement DESC
+
+		INSERT INTO Agreement
+		VALUES (@AgreementID + 1, @apartmentID, @buildingID, @managerID, GETDATE(), @endDate, 200, @monthlyRent)
+
+		INSERT INTO Signs
+		VALUES (@tenantID, @AgreementID + 1)
+	END TRY
+	BEGIN CATCH
+		RAISERROR('CANT INSERT SIGN, AGREEMENT TABLE', 16, 1)
+		ROLLBACK TRANSACTION;
+	END CATCH
+
+COMMIT TRANSACTION
